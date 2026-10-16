@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>VA-MOD Deriv Footprint & Delta Live</title>
+    <style>
+        body { background-color: #121212; color: #e0e0e0; font-family: Arial, sans-serif; margin: 0; padding: 20px; text-align: center; }
+        h2 { color: #00ffcc; margin-bottom: 5px; }
+        #controls { margin: 15px 0; background: #1e1e1e; padding: 10px; border-radius: 8px; display: inline-block; }
+        select, button { padding: 8px 12px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px; cursor: pointer; margin: 0 5px; }
+        select:hover, button:hover { background: #444; }
+        #canvas-container { margin-top: 20px; position: relative; display: inline-block; border: 1px solid #444; background: #000; }
+        canvas { display: block; }
+        #log { margin-top: 15px; font-size: 14px; color: #ffaa00; }
+    </style>
+</head>
+<body>
+
+    <h2>📊 VA-MOD Footprint & Tick Delta - Deriv Live</h2>
+    <div id="log">وضعیت اتصال: در حال برقراری ارتباط با وب‌سکت Deriv...</div>
+
+    <div id="controls">
+        <label>نماد معاملاتی:</label>
+        <select id="symbolSelect" onchange="changeSymbol()">
+            <option value="frxEURUSD">EUR/USD (فارکس)</option>
+            <option value="frxGBPUSD">GBP/USD (فارکس)</option>
+            <option value="frxUSDJPY">USD/JPY (فارکس)</option>
+            <option value="R_100" selected>Volatility 100 Index (R_100)</option>
+        </select>
+
+        <label>تایم‌فریم کندل:</label>
+        <select id="timeframeSelect">
+            <option value="60">1 دقیقه (M1)</option>
+            <option value="300">5 دقیقه (M5)</option>
+            <option value="900">15 دقیقه (M15)</option>
+        </select>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="valx" width="900" height="500"></canvas>
+    </div>
+
+<script>
+    const APP_ID = 1089;
+    let selectedSymbol = "R_100";
+    let ws;
+    let ticks = [];
+    
+    const canvas = document.getElementById("valx");
+    const ctx = canvas.getContext("2d");
+    const logDiv = document.getElementById("log");
+
+    function connectDeriv() {
+        ws = new WebSocket(`wss://blue.derivws.com/websockets/v3?app_id=${APP_ID}`);
+
+        ws.onopen = function() {
+            logDiv.innerText = `✅ متصل شد! در حال دریافت تیک‌های ${selectedSymbol}...`;
+            logDiv.style.color = "#00ffcc";
+            ws.send(JSON.stringify({ ticks: selectedSymbol, subscribe: 1 }));
+        };
+
+        ws.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            if (data.tick) {
+                const tick = data.tick;
+                ticks.push({
+                    price: parseFloat(tick.quote),
+                    time: tick.epoch,
+                    bid: parseFloat(tick.bid || tick.quote),
+                    ask: parseFloat(tick.ask || tick.quote)
+                });
+                if (ticks.length > 500) ticks.shift();
+                drawChart();
+            }
+        };
+
+        ws.onerror = function(err) {
+            logDiv.innerText = "❌ خطا در اتصال وب‌سکت!";
+            logDiv.style.color = "#ff4444";
+        };
+
+        ws.onclose = function() {
+            logDiv.innerText = "⚠️ ارتباط قطع شد. در حال تلاش برای اتصال مجدد...";
+            logDiv.style.color = "#ffaa00";
+            setTimeout(connectDeriv, 3000);
+        };
+    }
+
+    function changeSymbol() {
+        if (ws) ws.close();
+        selectedSymbol = document.getElementById("symbolSelect").value;
+        ticks = [];
+        connectDeriv();
+    }
+
+    function drawChart() {
+        ctx.fillStyle = "#000000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        if (ticks.length < 2) {
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "16px Arial";
+            ctx.fillText("در حال جمع‌آوری داده‌های تیک...", 320, 250);
+            return;
+        }
+
+        let prices = ticks.map(t => t.price);
+        let minP = Math.min(...prices);
+        let maxP = Math.max(...prices);
+        let range = maxP - minP || 1;
+
+        // رسم خط قیمت‌ها
+        ctx.strokeStyle = "#00ffcc";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+
+        for (let i = 0; i < ticks.length; i++) {
+            let x = (i / (ticks.length - 1)) * (canvas.width - 50) + 30;
+            let y = canvas.height - 50 - ((ticks[i].price - minP) / range) * (canvas.height - 100);
+            
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        // نمایش اطلاعات جاری
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "14px Arial";
+        ctx.fillText(`آخرین قیمت: ${prices[prices.length - 1]}`, 50, 30);
+        ctx.fillText(`حداقل: ${minP.toFixed(4)} | حداکثر: ${maxP.toFixed(4)}`, 50, 55);
+    }
+
+    connectDeriv();
+</script>
+
+</body>
+</html>
