@@ -39,16 +39,25 @@
 
         let ws;
         let ticksData = [];
+        
+        // لیست اندپوینت‌های جایگزین برای عبور از فیلترینگ و خطای هندشیک
+        const endpoints = [
+            "wss://ws.derivws.com/websockets/v3?app_id=1089",
+            "wss://blue.derivws.com/websockets/v3?app_id=1089",
+            "wss://green.derivws.com/websockets/v3?app_id=1089",
+            "wss://white.derivws.com/websockets/v3?app_id=1089"
+        ];
+        let currentEndpointIndex = 0;
 
         function connect() {
-            // استفاده از اندپوینت جایگزین blue.derivws.com برای دور زدن محدودیت هندشیک
-            const appId = 1089;
-            ws = new WebSocket(`wss://blue.derivws.com/websockets/v3?app_id=${appId}`);
+            const url = endpoints[currentEndpointIndex];
+            statusEl.textContent = `در حال اتصال (سرور ${currentEndpointIndex + 1})...`;
+            
+            ws = new WebSocket(url);
 
             ws.onopen = () => {
                 statusEl.textContent = 'متصل شد ✅';
                 statusEl.className = 'connected';
-                // اشتراک در نماد انتخابی
                 ws.send(JSON.stringify({ ticks: symbolSelect.value }));
             };
 
@@ -65,14 +74,14 @@
 
             ws.onerror = (err) => {
                 console.error("WS Error:", err);
-                statusEl.textContent = 'خطای اتصال ❌';
-                statusEl.className = 'disconnected';
             };
 
             ws.onclose = () => {
-                statusEl.textContent = 'ارتباط قطع شد. تلاش مجدد...';
+                statusEl.textContent = 'ارتباط قطع شد. تغییر سرور...';
                 statusEl.className = 'disconnected';
-                setTimeout(connect, 3000);
+                // چرخش بین سرورهای مختلف در صورت قطعی
+                currentEndpointIndex = (currentEndpointIndex + 1) % endpoints.length;
+                setTimeout(connect, 2000);
             };
         }
 
@@ -96,7 +105,6 @@
             });
             ctx.stroke();
 
-            // رسم قیمت‌های لحظه‌ای
             ctx.fillStyle = '#94a3b8';
             ctx.font = '12px Tahoma';
             ticksData.forEach((d, i) => {
